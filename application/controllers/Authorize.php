@@ -3,149 +3,195 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Authorize extends CI_Controller
 {
+    const LINK_SOLD = 'ILLIA';
+    
     /**
-     * __construct function.
-     *
-     * @access public
-     * @return void
+     * Authorize constructor.
      */
-    public function __construct() {
-        
+    public function __construct()
+    {
         parent::__construct();
         $this->load->library(array('session'));
         $this->load->helper(array('url'));
         $this->load->model('users_model');
-        
+    
+        $this->session->set_userdata('current_page', 'authorize');
     }
     
-    public function register()
+    protected function _isUserConfirmed($user)
     {
-        // create the data object
-        $data = new stdClass();
-        
-        // load form helper and validation library
-        $this->load->helper('form');
-        $this->load->library('form_validation');
+        return $user['confirmed'] === 0;
+    }
     
-        // set validation rules
-        $this->form_validation->set_rules('username', 'Username', 'trim|required|alpha_numeric|min_length[4]|is_unique[users.username]', array('is_unique' => 'This username already exists. Please choose another one.'));
-        $this->form_validation->set_rules('email', 'Email', 'trim|required|valid_email|is_unique[users.email]');
-        $this->form_validation->set_rules('password', 'Password', 'trim|required|min_length[6]');
-        $this->form_validation->set_rules('password_confirm', 'Confirm Password', 'trim|required|min_length[6]|matches[password]');
-    
-        if ($this->form_validation->run() === false) {
+    protected function _sendConfirmationEmail($user)
+    {
+        $config = Array(
+            'protocol' => 'smtp',
+            'smtp_host' => 'ssl://smtp.googlemail.com',
+            'smtp_port' => 465,
+            'smtp_user' => 'hibestaukro@gmail.com', // change it to yours
+            //            'smtp_pass' => 'Cbnybxtyrj12345', // change it to yours
+            'mailtype' => 'html',
+            'charset' => 'iso-8859-1',
+            'wordwrap' => true,
+        );
+        $options = [
+            'email' => $user['email'],
+            'confirm_phrase' => $user['confirm_phrase'],
+        ];
+        $user['confirmation_link'] = base_url('authorize/confirm') . '?' . http_build_query($options);
         
-            // validation not ok, send validation errors to the view
-            $this->load->view('header');
-            $this->load->view('user/register/register', $data);
-            $this->load->view('footer');
+        // load email library
+        $this->load->library('email', $config);
         
+        $body = $this->load->view('emails/register', ['user' => $user], true);
+        // prepare email
+        $this->email
+            ->from('hibestaukro@gmail.com')
+            ->to($user['email'])
+            ->subject('Registration on cilessons')
+            ->message($body)
+            ->set_mailtype('html');
+        
+        // send email
+        if ($this->email->send()) {
+            echo 'Email sent.';
         } else {
-            $data = array(
-                'first_name' => $this->input->post('firstname'),
-                'last_name' => $this->input->post('lastname'),
-                'email' => $this->input->post('email'),
-            );
-    
-            $userId = $this->users_model->save($data);
-            if ($userId) {
-                $this->load->view('user/register/register_success', $data);
-            } else {
-            
-                // user creation failed, this should never happen
-                $data->error = 'There was a problem creating your new account. Please try again.';
-            
-                $this->load->view('user/register/register', $data);
-            }
-        
+            print_r($this->email->print_debugger());
         }
-    }
-    
-    public function confirm()
-    {
-    
     }
     
     public function login()
     {
-        // create the data object
-        $data = new stdClass();
-    
-        // load form helper and validation library
         $this->load->helper('form');
         $this->load->library('form_validation');
-    
-        // set validation rules
-        $this->form_validation->set_rules('username', 'Username', 'required|alpha_numeric');
-        $this->form_validation->set_rules('password', 'Password', 'required');
-    
-        if ($this->form_validation->run() == false) {
         
-            // validation not ok, send validation errors to the view
-            $this->load->view('header');
-            $this->load->view('user/login/login');
-            $this->load->view('footer');
+        $this->form_validation
+            ->set_rules('email', 'Email', 'trim|required|valid_email');
+        $this->form_validation
+            ->set_rules('password', 'Password', 'trim|required|min_length[6]');
         
+        if ($this->form_validation->run() === false) {
+            $this->load->view('users/register');
         } else {
-        
-            // set variables from the form
-            $username = $this->input->post('username');
+            $email = $this->input->post('email');
             $password = $this->input->post('password');
-        
-            if ($this->user_model->resolve_user_login($username, $password)) {
             
-                $user_id = $this->user_model->get_user_id_from_username($username);
-                $user    = $this->user_model->get_user($user_id);
-            
-                // set session user datas
-                $_SESSION['user_id']      = (int)$user->id;
-                $_SESSION['username']     = (string)$user->username;
-                $_SESSION['logged_in']    = (bool)true;
-                $_SESSION['is_confirmed'] = (bool)$user->is_confirmed;
-                $_SESSION['is_admin']     = (bool)$user->is_admin;
-            
-                // user login ok
-                $this->load->view('header');
-                $this->load->view('user/login/login_success', $data);
-                $this->load->view('footer');
-            
+            $user = $this->users_model->getUserByEmailAndPassword($email, $password);
+            if (empty($user)) {
+                $error = 'User with such login or password doesn\'t exist';
+                $this->session->set_flashdata('error', $error);
+                
+                $this->load->view('users/register');
+            } elseif (!empty($user['confirm_phrase']) || empty($user['confirmed'])) {
+                $error = 'Please confirm your account.';
+                $this->session->set_flashdata('error', $error);
+                
+                $this->load->view('users/register');
             } else {
-            
-                // login failed
-                $data->error = 'Wrong username or password.';
-            
-                // send error to the view
-                $this->load->view('header');
-                $this->load->view('user/login/login', $data);
-                $this->load->view('footer');
-            
+                unset($user['confirmed']);
+                unset($user['confirm_phrase']);
+                $user['fullname'] = $user['first_name'] . ' ' . $user['last_name'];
+                //login
+                $this->session->set_userdata('currentUser', $user);
+                
+                $success = 'Welcome to CI lessons!';
+                $this->session->set_flashdata('success', $success);
+                
+                redirect('/');
             }
         }
     }
     
     public function logout()
     {
-        // create the data object
-        $data = new stdClass();
+        $this->session->unset_userdata('currentUser');
+        $this->session->set_flashdata('success', 'You just logged out successfully');
+
+        redirect('/');
+    }
     
-        if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+    public function register()
+    {
+        $this->load->helper('form');
+        $this->load->library('form_validation');
         
-            // remove session datas
-            foreach ($_SESSION as $key => $value) {
-                unset($_SESSION[$key]);
-            }
+        $this->form_validation
+            ->set_rules('firstname', 'Firstname', 'trim|required|alpha_numeric|min_length[4]');
+        $this->form_validation
+            ->set_rules('lastname', 'Lastname', 'trim|required|alpha_numeric|min_length[4]');
+        $this->form_validation
+            ->set_rules('email', 'Email', 'trim|required|valid_email');
+        $this->form_validation
+            ->set_rules('password', 'Password', 'trim|required|min_length[6]');
+        $this->form_validation
+            ->set_rules('password_confirm', 'Confirm Password', 'trim|required|min_length[6]|matches[password]');
         
-            // user logout ok
-            $this->load->view('header');
-            $this->load->view('user/logout/logout_success', $data);
-            $this->load->view('footer');
-        
+        if ($this->form_validation->run() === false) {
+            $this->load->view('users/register');
         } else {
-        
-            // there user was not logged in, we cannot logged him out,
-            // redirect him to site root
-            redirect('/');
-        
+            $firstname = $this->input->post('firstname');
+            $lastname = $this->input->post('lastname');
+            $email = $this->input->post('email');
+            $password = $this->input->post('password');
+            
+            $user = $this->users_model->getUserByEmail($email);
+            if (!empty($user)) {
+                throw new DuplicateEmailException('This email already exists');
+            }
+            $link = md5(time() . $user['email'] . self::LINK_SOLD);
+            $user = array(
+                'first_name' => $firstname,
+                'last_name' => $lastname,
+                'email' => $email,
+                'password' => $password,
+                'confirmed' => false,
+                'confirm_phrase' => $link,
+            );
+            
+            $userId = $this->users_model->save($user);
+            if (!empty($userId)) {
+                $user['id'] = $userId;
+                
+                $this->_sendConfirmationEmail($user);
+            }
         }
+    }
+    
+    public function confirm()
+    {
+        $email = $this->input->get('email');
+        $confirmPhrase = $this->input->get('confirm_phrase');
+        $success = $error = '';
+        
+        if (!empty($email) && !empty($confirmPhrase)) {
+            $user = $this->users_model->getUserByEmailAndPhrase($email, $confirmPhrase);
+            if (!empty($user)) {
+                $this->users_model->confirmUser($email);
+                
+                unset($user['confirmed']);
+                unset($user['confirm_phrase']);
+                $user['fullname'] = $user['first_name'] . ' ' . $user['last_name'];
+                //login
+                $this->session->set_userdata('currentUser', $user);
+                
+                $success = 'Congratulation, you\'ve just registered successfully!';
+            } else {
+                $error = sprintf(
+                    "Sorry, email <strong>%s</strong> is already exist or not confirmed.",
+                    $email
+                );
+            }
+        } else {
+            $error = "Sorry, your link doesn't have email or confirm phrase";
+        }
+        
+        if (!empty($error)) {
+            $this->session->set_flashdata('error', $error);
+        } elseif (!empty($success)) {
+            $this->session->set_flashdata('success', $success);
+        }
+        
+        redirect('/');
     }
 }

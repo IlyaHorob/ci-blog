@@ -6,6 +6,27 @@
                 <h4 class="page-head-line">Blank Page</h4>
             </div>
         </div>
+        <?php
+        $error = $this->session->flashdata('error');
+        $success = $this->session->flashdata('success');
+        $cssClass = $message = '';
+        if($error) {
+            $cssClass = 'alert alert-danger';
+            $message = $error;
+        } elseif($success) {
+            $cssClass = 'alert alert-success';
+            $message  = $success;
+        }
+        if(!empty($message)):
+        ?>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="<?php echo $cssClass ?>">
+                    <?php echo $message; ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
         <div class="row">
             <div class="col-md-12">
                 <div class="alert alert-warning">

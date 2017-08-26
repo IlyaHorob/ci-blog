@@ -9,6 +9,8 @@ class Users extends CI_Controller
         
         $this->load->model('users_model');
         $this->load->helper('url_helper');
+    
+        $this->session->set_userdata('current_page', 'users');
     }
     
     public function index()

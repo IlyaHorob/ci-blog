@@ -38,6 +38,16 @@ class Users_model extends CI_Model
         return $query->row_array();
     }
     
+    public function getUserByEmailAndPassword($email, $password)
+    {
+        $this->db->where('email', $email);
+        $this->db->where('password', $password);
+        $query = $this->db->get('users');
+        
+        return $query->row_array();
+        
+    }
+    
     public function save(array $userdata, $userId = null)
     {
         if (empty ($userId)) {
@@ -57,5 +67,25 @@ class Users_model extends CI_Model
     {
         $this->db->where('id', $userId);
         $this->db->delete('users');
+    }
+    
+    public function getUserByEmailAndPhrase($email, $phrase)
+    {
+        $this->db->where('email', $email);
+        $this->db->where('confirm_phrase', $phrase);
+        $query = $this->db->get('users');
+        
+        return $query->row_array();
+    }
+    
+    public function confirmUser($email)
+    {
+        $this->db->where('email', $email);
+        $userdata = [
+            'confirm_phrase' => '',
+            'confirmed' => 1,
+        ];
+        
+        return $this->db->update('users', $userdata);
     }
 }
